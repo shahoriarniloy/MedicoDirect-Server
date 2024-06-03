@@ -55,6 +55,21 @@ async function run() {
       }
     });
 
+    app.delete('/categories/:id', async (req, res) => {
+        try {
+          const id = req.params.id;
+          const result = await categoryCollection.deleteOne({ _id: new ObjectId(id) });
+          if (result.deletedCount === 0) {
+            return res.status(404).json({ error: 'Category not found' });
+          }
+          res.json({ message: 'Category deleted successfully' });
+        } catch (error) {
+          console.error('Error deleting category:', error);
+          res.status(500).json({ error: 'Internal server error' });
+        }
+      });
+      
+
     app.post('/medicines', async (req, res) => {
       try {
         const newMedicine = req.body;
