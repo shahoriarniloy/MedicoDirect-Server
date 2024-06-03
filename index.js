@@ -64,15 +64,28 @@ async function run() {
         res.status(500).json({ error: 'Internal server error' });
       }
     });
+
+    app.get('/medicines/:id', async (req, res) => {
+      try {
+        const id = req.params.id;
+        const medicine = await medicinesCollection.findOne({ _id: new ObjectId(id) });
+        if (!medicine) {
+          return res.status(404).json({ error: 'Medicine not found' });
+        }
+        res.json(medicine);
+      } catch (error) {
+        console.error('Error retrieving medicine:', error);
+        res.status(500).json({ error: 'Internal server error' });
+      }
+    });
   } finally {
-    // Ensure the client will close when you finish/error
   }
 }
 
 run().catch(console.dir);
 
 app.get('/', (req, res) => {
-  res.send('RestoSync Server');
+  res.send('MedicoDirect Server');
 });
 
 app.listen(port, () => {
