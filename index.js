@@ -43,6 +43,18 @@ async function run() {
       }
     });
 
+    app.post('/categories', async (req, res) => {
+      try {
+        const { name, imageUrl } = req.body; 
+        const newCategory = { name, imageUrl };
+        const result = await categoryCollection.insertOne(newCategory);
+        res.status(201).json(result);
+      } catch (error) {
+        console.error('Error creating category:', error);
+        res.status(500).json({ error: 'Internal server error' });
+      }
+    });
+
     app.post('/medicines', async (req, res) => {
       try {
         const newMedicine = req.body;
@@ -79,6 +91,7 @@ async function run() {
       }
     });
   } finally {
+    
   }
 }
 
