@@ -31,6 +31,7 @@ async function run() {
     const database = client.db("MedicoDirect");
     const categoryCollection = database.collection("categories");
     const medicinesCollection = database.collection("medicines");
+    const cartCollection = database.collection("carts");
 
     app.get('/categories', async (req, res) => {
       try {
@@ -105,10 +106,18 @@ async function run() {
         res.status(500).json({ error: 'Internal server error' });
       }
     });
+
+    app.post('/carts', async(req,res)=>{
+        const cartItem = req.body;
+        const result = await cartCollection.insertOne(cartItem);
+        res.send(result)
+    })
   } finally {
     
   }
 }
+
+
 
 run().catch(console.dir);
 
