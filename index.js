@@ -55,6 +55,8 @@ const verifyToken = (req, res, next)=>
     })
   }
 
+  
+
 //   const cookieOption = {
 //     httpOnly: true,
 //     secure:  process.env.NODE_ENV === "production"? true: false,
@@ -82,6 +84,17 @@ async function run() {
       // res.cookie('token',token, cookieOption).send({ success: true });
     });
 
+    const verifyAdmin = async (req, res,next)=>{
+      const email=req.decoded.email;
+      const query ={email:email};
+      const user = await userCollection.findOne(query);
+      const isAdmin =user?.role ==='admin';
+      if(!isAdmin){
+        return res.status(403).send({message:'forbidden access'});
+      }
+      next();
+  
+    }
 
     app.post('/users',async (req,res)=>{
       const user =req.body;
@@ -93,7 +106,7 @@ async function run() {
       const result = await userCollection.insertOne(user);
       res.send(result);
     })
-    app.get('/categories', async (req, res) => {
+    app.get('/categories',  async (req, res) => {
       try {
         const cursor = categoryCollection.find();
         const result = await cursor.toArray();
@@ -104,7 +117,7 @@ async function run() {
       }
     });
 
-    app.post('/categories', async (req, res) => {
+    app.post('/categories', verifyAdmin, async (req, res) => {
       try {
         const { name, imageUrl } = req.body; 
         const newCategory = { name, imageUrl };
@@ -116,7 +129,7 @@ async function run() {
       }
     });
 
-    app.delete('/categories/:id', async (req, res) => {
+    app.delete('/categories/:id', verifyAdmin, async (req, res) => {
         try {
           const id = req.params.id;
           const result = await categoryCollection.deleteOne({ _id: new ObjectId(id) });
@@ -189,14 +202,14 @@ async function run() {
       res.send(result);
     })
 
-    app.get('/users', verifyToken, async(req,res)=>{
+    app.get('/users', verifyToken, verifyAdmin, async(req,res)=>{
       console.log(req.headers);
       const users = userCollection.find();
       const result = await users.toArray();
       res.send(result);
     })
 
-    app.delete('/users/:id', async (req,res)=>{
+    app.delete('/users/:id', verifyAdmin, async (req,res)=>{
       const id = req.params.id;
       const query = {_id:new ObjectId(id)}
       const result = await userCollection.deleteOne(query);
@@ -246,7 +259,7 @@ async function run() {
           const email = req.params.email;
           console.log(email);
           if(email !==req.decoded.email){
-            return res.status(403).send({message:'unauthorized access'})
+            return res.status(403).send({message:'forbidden access'})
           }
           const query = {email:email};
           const user = await userCollection.findOne(query);
@@ -255,6 +268,21 @@ async function run() {
             admin =user?.role === 'admin';
           }
           res.send({admin});
+        })
+
+        app.get('/user/seller/:email',verifyToken, async(req,res)=>{
+          const email = req.params.email;
+          console.log(email);
+          if(email !==req.decoded.email){
+            return res.status(403).send({message:'forbidd access'})
+          }
+          const query = {email:email};
+          const user = await userCollection.findOne(query);
+          let seller = false;
+          if(user){
+            seller =user?.role === 'seller';
+          }
+          res.send({seller});
         })
 
 
