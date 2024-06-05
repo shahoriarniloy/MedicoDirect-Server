@@ -1,8 +1,12 @@
 const express = require('express');
+const cookieParser = require('cookie-parser');
+
 const cors = require('cors');
 require('dotenv').config();
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+const jwt = require('jsonwebtoken');
 const app = express();
+app.use(cookieParser());
 
 const port = process.env.PORT || 5000;
 
@@ -26,6 +30,39 @@ const client = new MongoClient(uri, {
   }
 });
 
+const logger = (req, res, next)=>{
+  console.log('log:info',req.method, req.url);
+  next();
+}
+
+
+
+const verifyToken = (req, res, next)=>
+  {
+    // console.log('token in the middleware',req.headers.authorization);
+    if(!req.headers.authorization){
+      return res.status(401).send({message:'Unauthorized Access'})
+    }
+    const token = req.headers.authorization.split(' ')[1];
+
+    jwt.verify(token,process.env.ACCESS_TOKEN_SECRET,(err,decoded)=>{
+      if(err){      
+        return res.status(401).send({message:'Unauthorized Access'})
+
+      }
+    req.decoded=decoded;
+    next();
+    })
+  }
+
+//   const cookieOption = {
+//     httpOnly: true,
+//     secure:  process.env.NODE_ENV === "production"? true: false,
+//     sameSite: process.env.NODE_ENV === "production"? "none": "strict",
+//   };
+
+
+
 async function run() {
   try {
     const database = client.db("MedicoDirect");
@@ -33,6 +70,17 @@ async function run() {
     const medicinesCollection = database.collection("medicines");
     const cartCollection = database.collection("carts");
     const userCollection = database.collection("users");
+
+
+    app.post('/jwt', async (req, res) => {
+      const user = req.body;
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
+        expiresIn: '1h'
+      });
+
+      res.send({token});
+      // res.cookie('token',token, cookieOption).send({ success: true });
+    });
 
 
     app.post('/users',async (req,res)=>{
@@ -141,7 +189,8 @@ async function run() {
       res.send(result);
     })
 
-    app.get('/users', async(req,res)=>{
+    app.get('/users', verifyToken, async(req,res)=>{
+      console.log(req.headers);
       const users = userCollection.find();
       const result = await users.toArray();
       res.send(result);
@@ -179,6 +228,34 @@ async function run() {
         const result = await userCollection.updateOne(filter, updatedDoc)
         res.send(result);
       })
+
+      app.patch('/users/user/:id', async (req,res)=>
+        {
+          const id = req.params.id;
+          const filter = {_id:new ObjectId(id)};
+          const updatedDoc={
+            $set:{
+              role:'user'
+            }
+          }
+          const result = await userCollection.updateOne(filter, updatedDoc)
+          res.send(result);
+        })
+
+        app.get('/user/admin/:email',verifyToken, async(req,res)=>{
+          const email = req.params.email;
+          console.log(email);
+          if(email !==req.decoded.email){
+            return res.status(403).send({message:'unauthorized access'})
+          }
+          const query = {email:email};
+          const user = await userCollection.findOne(query);
+          let admin = false;
+          if(user){
+            admin =user?.role === 'admin';
+          }
+          res.send({admin});
+        })
 
 
 
