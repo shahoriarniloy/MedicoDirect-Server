@@ -3,6 +3,7 @@ const cookieParser = require('cookie-parser');
 
 const cors = require('cors');
 require('dotenv').config();
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY)
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const jwt = require('jsonwebtoken');
 const app = express();
@@ -72,6 +73,11 @@ async function run() {
     const medicinesCollection = database.collection("medicines");
     const cartCollection = database.collection("carts");
     const userCollection = database.collection("users");
+    const paymentCollection = database.collection("payments");
+    const sellCollection = database.collection("sells");
+    const advertisementCollection = database.collection("advertisement");
+
+
 
 
     app.post('/jwt', async (req, res) => {
@@ -90,6 +96,17 @@ async function run() {
       const user = await userCollection.findOne(query);
       const isAdmin =user?.role ==='admin';
       if(!isAdmin){
+        return res.status(403).send({message:'forbidden access'});
+      }
+      next();
+  
+    }
+    const verifySeller = async (req, res,next)=>{
+      const email=req.decoded.email;
+      const query ={email:email};
+      const user = await userCollection.findOne(query);
+      const isSeller =user?.role ==='seller';
+      if(!isSeller){
         return res.status(403).send({message:'forbidden access'});
       }
       next();
@@ -117,7 +134,7 @@ async function run() {
       }
     });
 
-    app.post('/categories', verifyAdmin, async (req, res) => {
+    app.post('/categories',verifyToken, verifyAdmin, async (req, res) => {
       try {
         const { name, imageUrl } = req.body; 
         const newCategory = { name, imageUrl };
@@ -129,7 +146,7 @@ async function run() {
       }
     });
 
-    app.delete('/categories/:id', verifyAdmin, async (req, res) => {
+    app.delete('/categories/:id',verifyToken, verifyAdmin, async (req, res) => {
         try {
           const id = req.params.id;
           const result = await categoryCollection.deleteOne({ _id: new ObjectId(id) });
@@ -147,7 +164,8 @@ async function run() {
     app.post('/medicines', async (req, res) => {
       try {
         const newMedicine = req.body;
-        newMedicine.price = parseInt(newMedicine.price);
+        newMedicine.advertise = 'no';
+        newMedicine.price = parseInt(newMedicine.perUnitPrice);
         const result = await medicinesCollection.insertOne(newMedicine);
         res.status(201).json(result);
       } catch (error) {
@@ -169,8 +187,10 @@ async function run() {
 
     app.get('/medicines/:id', async (req, res) => {
       try {
-        const id = req.params.id;
+        const id = req.params.id.trim();
         const medicine = await medicinesCollection.findOne({ _id: new ObjectId(id) });
+
+        
         if (!medicine) {
           return res.status(404).json({ error: 'Medicine not found' });
         }
@@ -188,19 +208,48 @@ async function run() {
       res.send(result);
     })
 
-    app.post('/carts', async(req,res)=>{
-        const cartItem = req.body;
-        cartItem.purchaseDate = new Date();
-        const result = await cartCollection.insertOne(cartItem);
-        res.send(result)
-    })
+    app.post('/carts', async (req, res) => {
+      try {
+          const cartItem = req.body;
+          cartItem.quantity = 1;
+          cartItem.purchaseDate = new Date();
+          const result1 = await cartCollection.insertOne(cartItem);
+          const cartItemId = result1.insertedId;
+          cartItem.cartItemId = cartItemId;
+          cartItem.status = 'pending';
+          const result2 = await sellCollection.insertOne(cartItem);
+  
+          res.send({ result1, result2 });
+      } catch (error) {
+          console.error("Error:", error);
+          res.status(500).send("Internal Server Error");
+      }
+  });
+  
 
-    app.delete('/carts/:id', async (req,res)=>{
-      const id=req.params.id;
-      const query = {_id:new ObjectId(id)}
-      const result = await cartCollection.deleteOne(query);
-      res.send(result);
-    })
+    // app.delete('/carts/:id', async (req,res)=>{
+    //   const id=req.params.id;
+    //   const query = {_id:new ObjectId(id)}
+    //   const result = await cartCollection.deleteOne(query);
+    //   const result2 = await sellCollection.deleteOne(query);
+
+    //   res.send(result);
+    // })
+
+
+    app.delete('/carts/:id', async (req, res) => {
+      try {
+          const id = req.params.id;
+          const query = { cartItemId: id }; 
+          const result1 = await cartCollection.deleteOne({ _id: new ObjectId(id) });
+          const result2 = await sellCollection.deleteOne({ cartItemId: new ObjectId(id) });
+          res.send({ result1, result2 });
+      } catch (error) {
+          console.error("Error:", error);
+          res.status(500).send("Internal Server Error");
+      }
+  });
+  
 
     app.get('/users', verifyToken, verifyAdmin, async(req,res)=>{
       console.log(req.headers);
@@ -209,7 +258,7 @@ async function run() {
       res.send(result);
     })
 
-    app.delete('/users/:id', verifyAdmin, async (req,res)=>{
+    app.delete('/users/:id', verifyToken, verifyAdmin, async (req,res)=>{
       const id = req.params.id;
       const query = {_id:new ObjectId(id)}
       const result = await userCollection.deleteOne(query);
@@ -274,7 +323,7 @@ async function run() {
           const email = req.params.email;
           console.log(email);
           if(email !==req.decoded.email){
-            return res.status(403).send({message:'forbidd access'})
+            return res.status(403).send({message:'forbidden access'})
           }
           const query = {email:email};
           const user = await userCollection.findOne(query);
@@ -287,9 +336,273 @@ async function run() {
 
 
 
+        app.post('/create-payment-intent', async(req,res)=>{
+          const {price}= req.body;
+          const amount = parseInt(price*100);
+
+          console.log(amount);
+
+          const paymentIntent = await stripe.paymentIntents.create({
+            amount:amount,
+            currency:'usd',
+            payment_method_types:['card']
+          })
+          res.send({
+            ClientSecret: paymentIntent.client_secret
+          })
+        })
+
+        app.post('/payments',async(req,res)=>{
+          const payment = req.body;
+          const paymentResult = await paymentCollection.insertOne(payment);
+          console.log('payment info', payment);
+          const query={_id:{
+            $in: payment.cartIds.map(id=>new ObjectId(id))
+          }}
+          const deleteResult = await cartCollection.deleteMany(query);
+          res.send({
+            paymentResult,
+            deleteResult
+        });
+        })
+
+        app.get('/invoice/:id', async(req, res) => {
+          const transactionId = req.params.id;
+          try {
+              const invoice = await paymentCollection.findOne({ transactionId });
+              if (invoice) {
+                  res.send(invoice);
+              } else {
+                  res.status(404).send({ error: "Invoice not found" });
+              }
+          } catch (error) {
+              res.status(500).send({ error: "Internal Server Error" });
+          }
+      });
+      
+      app.get('/payments',  async(req,res)=>{
+        console.log(req.headers);
+        const payments = paymentCollection.find();
+        const result = await payments.toArray();
+        res.send(result);
+      })
+
+
+      app.put('/payments/:paymentId', async (req, res) => {
+        const paymentId = req.params.paymentId;
+      
+        const updatedPayment = await paymentCollection.findOneAndUpdate(
+          { _id: new ObjectId(paymentId) },
+          { $set: { status: 'paid' } },
+          { returnOriginal: false } 
+        );
+        
+      
+        res.json(updatedPayment.value); 
+      });
+
+
+      
+
+    //   app.patch('/payments/:id', async (req, res) => {
+    //     const paymentId = req.params.id;
+    //     const cartIds = req.body.cartIds;
+        
+        
+    // });
+
+    app.patch('/payments/:id', async (req, res) => {
+      const cartIds = req.body; 
+      console.log('cartIDS',cartIds);
+  
+      const query = { cartItemId: { $in: cartIds.map(id => new ObjectId(id)) } };
+      try {
+          const result = await sellCollection.updateMany(
+              query,  
+              { $set: { status: 'paid' } }
+          );
+          console.log(query);
+  
+          console.log(`${result.modifiedCount} documents updated.`);
+          res.send('Sell collection updated successfully.');
+      } catch (error) {
+          console.error('Error updating documents:', error);
+          res.status(500).send('Internal server error');
+      }
+  });
+    
 
 
 
+      app.get('/seller/medicines/:id', async (req, res) => {
+        const sellerEmail = req.params.id;
+        console.log('Seller:',sellerEmail);
+    
+        try {
+            const medicines = await medicinesCollection.find({ sellerEmail: sellerEmail }).toArray();
+            console.log(medicines);
+            res.json({ medicines });
+        } catch (error) {
+            console.error('Error fetching medicines:', error);
+            res.status(500).json({ error: 'Internal server error' });
+        }
+    });
+
+   
+    app.get('/seller/payment-history/:id',  async(req,res)=>{
+      const sellerEmail = req.params.id;
+      try {
+        const payments = await paymentCollection.find({ sellerEmail: sellerEmail }).toArray();
+        res.json({ payments });
+    } catch (error) {
+        console.error('Error fetching :', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+    })
+
+    app.get('/sales',  async(req,res)=>{
+      console.log(req.headers);
+      const sells = sellCollection.find();
+      const result = await sells.toArray();
+      res.send(result);
+    });
+
+
+    app.post('/advertisement', async (req, res) => {
+        const adds=req.body;
+        adds.status='pending';
+        const advertise = await advertisementCollection.insertOne(adds);
+        
+    res.send(advertise)      
+    });
+
+    app.put('/medicine-advertise-status/:id', async (req, res) => {
+      const id = req.params.id;
+    
+      const advertise = await medicinesCollection.findOneAndUpdate(
+        { _id: new ObjectId(id) },
+        { $set: { advertise: 'requested' } },
+        { returnOriginal: false } 
+      );
+      
+    
+      res.json(advertise); 
+    });
+
+
+
+  
+
+
+app.put('/medicines/:id', async (req, res) => {
+  const medId = req.params.id;
+
+  const updatedMed = await medicinesCollection.findOneAndUpdate(
+    { _id: new ObjectId(medId) },
+    { $set: { advertise: 'yes' } },
+    { returnOriginal: false } 
+  );
+  
+
+  res.json(updatedMed); 
+});
+
+app.put('/medicines-remove/:id', async (req, res) => {
+  const medId = req.params.id;
+
+  const updatedMed = await medicinesCollection.findOneAndUpdate(
+    { _id: new ObjectId(medId) },
+    { $set: { advertise: 'no' } },
+    { returnOriginal: false } 
+  );
+  
+
+  res.json(updatedMed); 
+});
+
+
+// app.get('/categories/:category', async (req, res) => {
+//   console.log('niloy',req.params.category );
+//   const medicines = await medicinesCollection.find({ 
+//     category: req.params.category });
+//   console.log(medicines);
+//   res.send(medicines.data);
+// });
+
+
+
+app.get('/categories/:category', async (req, res) => {
+  try {
+    const category = req.params.category;
+    const meds = await medicinesCollection.find({ category: category }).toArray();
+    res.json(meds);
+  } catch (error) {
+    console.error("Error retrieving meds by category:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+
+app.get('/invoices/:email', async (req, res) => {
+  try {
+    const invoices = req.params.email;
+    const inv = await sellCollection.find({ sellerEmail: invoices }).toArray();
+    res.json(inv);
+  } catch (error) {
+    console.error("Error retrieving meds by category:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+app.put('/carts/:id', async (req, res) => {
+  const cartId = req.params.id;
+  const {id,
+    updatedQuantity,
+    updatedPrice } = req.body; 
+  const newQuantity = parseInt(updatedQuantity);
+  const newPrice=parseInt(updatedPrice);
+
+  console.log('Id:', id);
+  console.log('New Quantity:', newQuantity);
+  console.log('New Price:', newPrice);
+
+  try {
+      const updatedCart = await cartCollection.findOneAndUpdate(
+          { _id: new ObjectId(cartId) },
+          { $set: { quantity: newQuantity, price: newPrice } },
+          { returnOriginal: false }
+      );
+
+      res.json(updatedCart.value);
+  } catch (error) {
+      console.error("Error updating cart:", error);
+      res.status(500).send("Error updating cart");
+  }
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  
 
   } finally {
     
