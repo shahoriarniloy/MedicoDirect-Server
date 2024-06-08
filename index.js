@@ -319,6 +319,21 @@ async function run() {
           res.send({admin});
         })
 
+        app.get('/user/user/:email',verifyToken, async(req,res)=>{
+          const email = req.params.email;
+          console.log(email);
+          if(email !==req.decoded.email){
+            return res.status(403).send({message:'forbidden access'})
+          }
+          const query = {email:email};
+          const role = await userCollection.findOne(query);
+          let user = false;
+          if(role){
+            user =role?.role === 'user';
+          }
+          res.send({user});
+        })
+
         app.get('/user/seller/:email',verifyToken, async(req,res)=>{
           const email = req.params.email;
           console.log(email);
@@ -546,6 +561,7 @@ app.get('/categories/:category', async (req, res) => {
 app.get('/invoices/:email', async (req, res) => {
   try {
     const invoices = req.params.email;
+    console.log('user email:',invoices);
     const inv = await sellCollection.find({ sellerEmail: invoices }).toArray();
     res.json(inv);
   } catch (error) {
@@ -588,6 +604,17 @@ app.put('/carts/:id', async (req, res) => {
 
 
 
+app.get('/user-invoices/:email', async (req, res) => {
+  try {
+    const invoices = req.params.email;
+    console.log('user email:',invoices);
+    const inv = await sellCollection.find({ email: invoices }).toArray();
+    res.json(inv);
+  } catch (error) {
+    console.error("Error retrieving inv by category:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 
 
