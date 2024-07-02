@@ -11,10 +11,15 @@ app.use(cookieParser());
 
 const port = process.env.PORT || 5000;
 
+
+
 const corsOptions = {
   origin: [
     'http://localhost:5173',
-    'http://localhost:5174'
+    'http://localhost:5174',
+    'https://medicodirect-d0ec3.web.app',
+    'https://medicodirect-d0ec3.firebaseapp.com',
+    'https://medicodirect.netlify.app'
   ],
   credentials: true
 };
@@ -351,7 +356,7 @@ async function run() {
 
 
 
-        app.post('/create-payment-intent', async(req,res)=>{
+        app.post('/create-payment-intent', verifyToken, async(req,res)=>{
           const {price}= req.body;
           const amount = parseInt(price*100);
 
@@ -367,7 +372,7 @@ async function run() {
           })
         })
 
-        app.post('/payments',async(req,res)=>{
+        app.post('/payments', verifyToken, async(req,res)=>{
           const payment = req.body;
           const paymentResult = await paymentCollection.insertOne(payment);
           console.log('payment info', payment);
@@ -381,7 +386,7 @@ async function run() {
         });
         })
 
-        app.get('/invoice/:id', async(req, res) => {
+        app.get('/invoice/:id', verifyToken, async(req, res) => {
           const transactionId = req.params.id;
           try {
               const invoice = await paymentCollection.findOne({ transactionId });
@@ -395,7 +400,7 @@ async function run() {
           }
       });
       
-      app.get('/payments',  async(req,res)=>{
+      app.get('/payments', verifyToken, async(req,res)=>{
         console.log(req.headers);
         const payments = paymentCollection.find();
         const result = await payments.toArray();
@@ -403,7 +408,7 @@ async function run() {
       })
 
 
-      app.put('/payments/:paymentId', async (req, res) => {
+      app.put('/payments/:paymentId',verifyToken, async (req, res) => {
         const paymentId = req.params.paymentId;
       
         const updatedPayment = await paymentCollection.findOneAndUpdate(
@@ -426,7 +431,7 @@ async function run() {
         
     // });
 
-    app.patch('/payments/:id', async (req, res) => {
+    app.patch('/payments/:id',verifyToken, async (req, res) => {
       const cartIds = req.body; 
       console.log('cartIDS',cartIds);
   
@@ -449,7 +454,7 @@ async function run() {
 
 
 
-      app.get('/seller/medicines/:id', async (req, res) => {
+      app.get('/seller/medicines/:id', verifyToken, async (req, res) => {
         const sellerEmail = req.params.id;
         console.log('Seller:',sellerEmail);
     
@@ -464,7 +469,7 @@ async function run() {
     });
 
    
-    app.get('/seller/payment-history/:id',  async(req,res)=>{
+    app.get('/seller/payment-history/:id', verifyToken, async(req,res)=>{
       const sellerEmail = req.params.id;
       try {
         const payments = await paymentCollection.find({ sellerEmail: sellerEmail }).toArray();
@@ -475,7 +480,7 @@ async function run() {
     }
     })
 
-    app.get('/sales',  async(req,res)=>{
+    app.get('/sales', verifyToken,  async(req,res)=>{
       console.log(req.headers);
       const sells = sellCollection.find();
       const result = await sells.toArray();
@@ -483,7 +488,7 @@ async function run() {
     });
 
 
-    app.post('/advertisement', async (req, res) => {
+    app.post('/advertisement',verifyToken, async (req, res) => {
         const adds=req.body;
         adds.status='pending';
         const advertise = await advertisementCollection.insertOne(adds);
@@ -491,7 +496,7 @@ async function run() {
     res.send(advertise)      
     });
 
-    app.put('/medicine-advertise-status/:id', async (req, res) => {
+    app.put('/medicine-advertise-status/:id', verifyToken, async (req, res) => {
       const id = req.params.id;
     
       const advertise = await medicinesCollection.findOneAndUpdate(
@@ -509,7 +514,7 @@ async function run() {
   
 
 
-app.put('/medicines/:id', async (req, res) => {
+app.put('/medicines/:id', verifyToken, async (req, res) => {
   const medId = req.params.id;
 
   const updatedMed = await medicinesCollection.findOneAndUpdate(
@@ -522,7 +527,7 @@ app.put('/medicines/:id', async (req, res) => {
   res.json(updatedMed); 
 });
 
-app.put('/medicines-remove/:id', async (req, res) => {
+app.put('/medicines-remove/:id', verifyToken, async (req, res) => {
   const medId = req.params.id;
 
   const updatedMed = await medicinesCollection.findOneAndUpdate(
@@ -569,7 +574,7 @@ app.get('/invoices/:email', async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
-app.put('/carts/:id', async (req, res) => {
+app.put('/carts/:id', verifyToken, async (req, res) => {
   const cartId = req.params.id;
   const {id,
     updatedQuantity,
@@ -604,7 +609,7 @@ app.put('/carts/:id', async (req, res) => {
 
 
 
-app.get('/user-invoices/:email', async (req, res) => {
+app.get('/user-invoices/:email', verifyToken, async (req, res) => {
   try {
     const invoices = req.params.email;
     console.log('user email:',invoices);
