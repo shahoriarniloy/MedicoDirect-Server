@@ -19,7 +19,8 @@ const corsOptions = {
     'http://localhost:5174',
     'https://medicodirect-d0ec3.web.app',
     'https://medicodirect-d0ec3.firebaseapp.com',
-    'https://medicodirect.netlify.app'
+    'https://medicodirect.netlify.app',
+    'https://medicodirectecommerce.web.app'
   ],
   credentials: true
 };
